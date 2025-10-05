@@ -1,0 +1,3 @@
+- [x] Update android/app/build.gradle.kts to set ndkVersion = "27.0.12077973"
+- [x] Run flutter clean and flutter run to test the fix - Build berhasil, tetapi instalasi gagal karena tidak cukup ruang di HP
+- [x] Fix icon display by setting useMaterial3: false in main.dart

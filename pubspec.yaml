@@ -1,0 +1,29 @@
+name: halallife
+
+environment:
+  sdk: "^3.8.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # State Management
+  flutter_riverpod: ^2.5.1
+  # Logika API dan Geo
+  dio: ^5.4.3 # HTTP Client yang kuat
+  geolocator: ^12.0.0 # Mengakses GPS/Lokasi
+  flutter_compass: ^0.8.0 # Kompas untuk arah kiblat
+  just_audio: ^0.9.38 # Mengelola audio untuk Al-Quran
+
+  # Fonts
+  google_fonts: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  # Http & API
+  http: ^1.1.2
+  # Icons
+  cupertino_icons: ^1.0.2
+
+flutter:
+  uses-material-design: true
