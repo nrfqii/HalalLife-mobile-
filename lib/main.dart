@@ -10,6 +10,7 @@ import 'screens/profile_screen.dart';
 import 'screens/qibla_screen.dart'; // Import screen kiblat baru
 import 'services/location_provider.dart';
 import 'services/prayer_time_provider.dart';
+import 'providers/theme_provider.dart';
 
 // Definisi Warna Global
 const Color kPrimaryColor = Color(0xFF4a7c59);
@@ -23,11 +24,13 @@ void main() {
   );
 }
 
-class HalalLifeApp extends StatelessWidget {
+class HalalLifeApp extends ConsumerWidget {
   const HalalLifeApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
+
     return MaterialApp(
       title: 'Halal Life',
       debugShowCheckedModeBanner: false,
@@ -38,6 +41,18 @@ class HalalLifeApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: kPrimaryColor),
         useMaterial3: false,
       ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme),
+        primaryColor: kPrimaryColor,
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: kPrimaryColor,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: false,
+      ),
+      themeMode: themeMode,
       initialRoute: '/',
       routes: {
         '/': (context) => const MainLayout(),

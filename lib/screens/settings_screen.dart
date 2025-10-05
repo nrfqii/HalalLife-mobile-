@@ -3,12 +3,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../main.dart';
 import '../widgets/custom_widgets.dart';
+import '../providers/theme_provider.dart';
+import '../providers/quran_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
+    final isDarkMode = themeMode == ThemeMode.dark;
+    final quranState = ref.watch(quranProvider);
+    final currentQori = quranState.selectedQori;
+    final qoriMap = ref.read(quranProvider.notifier).availableQori();
+    final currentQoriName = qoriMap[currentQori] ?? 'Default';
+
     return SingleChildScrollView(
       child: Column(
         children: [
@@ -36,11 +45,43 @@ class SettingsScreen extends ConsumerWidget {
                       _buildSettingItem(
                         title: 'Mode Gelap',
                         trailing: CustomSwitch(
-                          value: false,
+                          value: isDarkMode,
                           onChanged: (val) {
-                            // Logika ubah state mode gelap
+                            ref.read(themeProvider.notifier).toggleTheme();
                           },
                         ),
+                      ),
+                      _buildSettingItem(
+                        title: 'Qori Tilawah',
+                        trailing: Text(
+                          currentQoriName,
+                          style: const TextStyle(color: Color(0xFF666666)),
+                        ),
+                        onTap: () async {
+                          final selected = await showModalBottomSheet<String?>(
+                            context: context,
+                            builder: (ctx) {
+                              return ListView(
+                                shrinkWrap: true,
+                                children: qoriMap.entries
+                                    .map(
+                                      (e) => ListTile(
+                                        title: Text(e.value),
+                                        onTap: () => Navigator.of(ctx).pop(e.key),
+                                      ),
+                                    )
+                                    .toList(),
+                              );
+                            },
+                          );
+
+                          if (selected != null) {
+                            ref.read(quranProvider.notifier).changeQori(selected);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Qori dipilih: ${qoriMap[selected]}')),
+                            );
+                          }
+                        },
                       ),
                       _buildSettingItem(
                         title: 'Ganti Lokasi',
