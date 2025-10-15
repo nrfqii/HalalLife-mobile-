@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../main.dart';
 import '../widgets/custom_widgets.dart';
+import '../services/prayer_time_provider.dart';
+import '../services/location_provider.dart';
 import 'tasbih_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -16,16 +18,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Get location when screen initializes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(locationProvider.notifier).getCurrentLocation();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    const String dummyLocation = 'Kajen, Jawa Tengah';
-    
+    final locationState = ref.watch(locationProvider);
+    final location = locationState.locationName.isNotEmpty
+        ? locationState.locationName
+        : 'Mendapatkan lokasi...';
+
     return SingleChildScrollView(
       child: Column(
         children: [
-          _buildHeader(context, dummyLocation),
+          _buildHeader(context, location),
           
           const Padding(
             padding: EdgeInsets.all(20),
@@ -168,16 +177,68 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
 // ============== PRAYER CARD ==============
 
-class _PrayerCard extends StatelessWidget {
+class _PrayerCard extends ConsumerStatefulWidget {
   const _PrayerCard();
 
   @override
+  ConsumerState<_PrayerCard> createState() => _PrayerCardState();
+}
+
+class _PrayerCardState extends ConsumerState<_PrayerCard> {
+  String _currentTime = '';
+  Duration _timeRemaining = const Duration(hours: 0);
+
+  @override
+  void initState() {
+    super.initState();
+    _updateTime();
+    _updateCountdown();
+    // Update time and countdown every second
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (mounted) {
+        _updateTime();
+        _updateCountdown();
+      }
+      return mounted;
+    });
+  }
+
+  void _updateTime() {
+    final now = DateTime.now();
+    setState(() {
+      _currentTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    });
+  }
+
+  void _updateCountdown() {
+    final prayerState = ref.read(prayerTimeProvider);
+    if (prayerState.nextPrayer != null) {
+      final now = DateTime.now();
+      final [hour, minute] = prayerState.nextPrayer!.time.split(':').map(int.parse).toList();
+      final nextPrayerTime = DateTime(now.year, now.month, now.day, hour, minute);
+
+      // If next prayer time has passed today, calculate for tomorrow
+      final adjustedNextPrayerTime = nextPrayerTime.isAfter(now)
+          ? nextPrayerTime
+          : nextPrayerTime.add(const Duration(days: 1));
+
+      setState(() {
+        _timeRemaining = adjustedNextPrayerTime.difference(now);
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    const String currentPrayer = 'Dzuhur';
-    const String currentTime = '11:40';
-    const String nextPrayer = 'Ashar';
-    const String nextTime = '03:18 PM';
-    const Duration timeRemaining = Duration(hours: 3, minutes: 38);
+    // Use prayer times from provider
+    final prayerState = ref.watch(prayerTimeProvider);
+    final currentPrayer = prayerState.currentPrayer?.name ?? 'Dzuhur';
+    final nextPrayer = prayerState.nextPrayer?.name ?? 'Ashar';
+    final nextTime = prayerState.nextPrayer?.time ?? '15:18';
+
+    // Use real-time countdown from state
+    final timeRemaining = _timeRemaining;
     
     return Container(
       width: double.infinity,
@@ -252,7 +313,7 @@ class _PrayerCard extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
-                      currentTime,
+                      _currentTime,
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.8),
                         fontSize: 18,
@@ -386,15 +447,13 @@ class _MenuGrid extends StatelessWidget {
   Widget _buildMenuItem(BuildContext context, IconData icon, String text, String route, {VoidCallback? onTap}) {
     return InkWell(
       onTap: onTap ?? () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Navigasi ke ${text.replaceAll('\n', ' ')}'))
-        );
+        Navigator.pushNamed(context, route);
       },
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 50, 
+            width: 50,
             height: 50,
             decoration: BoxDecoration(
               color: const Color(0xFFE8F5E8),
@@ -406,8 +465,8 @@ class _MenuGrid extends StatelessWidget {
           Text(
             text,
             style: const TextStyle(
-              fontSize: 12, 
-              color: Color(0xFF333333), 
+              fontSize: 12,
+              color: Color(0xFF333333),
               fontWeight: FontWeight.w500
             ),
             textAlign: TextAlign.center,
@@ -463,21 +522,19 @@ class _ReminderCard extends StatelessWidget {
 
 // ============== PRAYER SCHEDULE LIST ==============
 
-class _PrayerScheduleList extends StatelessWidget {
+class _PrayerScheduleList extends ConsumerWidget {
   const _PrayerScheduleList();
 
   @override
-  Widget build(BuildContext context) {
-    final List<Map<String, String>> prayers = [
-      {'name': 'Subuh', 'time': '04:45'},
-      {'name': 'Dzuhur', 'time': '11:40'},
-      {'name': 'Ashar', 'time': '15:18'},
-      {'name': 'Maghrib', 'time': '18:05'},
-      {'name': 'Isya', 'time': '19:20'},
-    ];
+  Widget build(BuildContext context, WidgetRef ref) {
+    final prayerState = ref.watch(prayerTimeProvider);
+
+    if (prayerState.times.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
     return Column(
-      children: prayers.map((p) => Container(
+      children: prayerState.times.map((prayer) => Container(
         padding: const EdgeInsets.all(10),
         margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
@@ -491,16 +548,16 @@ class _PrayerScheduleList extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              p['name']!, 
+              prayer.name,
               style: const TextStyle(
-                fontWeight: FontWeight.w600, 
+                fontWeight: FontWeight.w600,
                 color: Color(0xFF333333)
               )
             ),
             Text(
-              p['time']!, 
+              prayer.time,
               style: const TextStyle(
-                fontWeight: FontWeight.bold, 
+                fontWeight: FontWeight.bold,
                 color: kPrimaryColor
               )
             ),

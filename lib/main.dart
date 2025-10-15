@@ -8,6 +8,9 @@ import 'screens/quran_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/qibla_screen.dart'; // Import screen kiblat baru
+import 'screens/masjid_screen.dart';
+import 'screens/kajian_screen.dart';
+import 'screens/makanan_screen.dart';
 import 'services/location_provider.dart';
 import 'services/prayer_time_provider.dart';
 import 'providers/theme_provider.dart';
@@ -60,6 +63,9 @@ class HalalLifeApp extends ConsumerWidget {
         '/qibla': (context) => const QiblaScreen(), // Route untuk kiblat
         '/settings': (context) => const SettingsScreen(),
         '/profile': (context) => const ProfileScreen(),
+        '/masjid-terdekat': (context) => const MasjidScreen(),
+        '/info-kajian': (context) => const KajianScreen(),
+        '/makanan-halal': (context) => const MakananScreen(),
       },
     );
   }

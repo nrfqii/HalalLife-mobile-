@@ -21,6 +21,8 @@ class _QuranScreenState extends ConsumerState<QuranScreen> {
   bool _isDetailView = false;
   // selected surah is managed by the provider
   String _searchQuery = '';
+  final ScrollController _scrollController = ScrollController();
+  final Map<int, GlobalKey> _verseKeys = {};
 
   // Audio Player state akan dikelola oleh Provider jika ini bukan demo
 
@@ -31,6 +33,25 @@ class _QuranScreenState extends ConsumerState<QuranScreen> {
       // Trigger one-time fetch of surah list
       ref.read(quranProvider.notifier).fetchSurahList();
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToVerse(int index) {
+    final key = _verseKeys[index];
+    if (key == null) return;
+    final ctx = key.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 300),
+      alignment: 0.5,
+      curve: Curves.easeInOut,
+    );
   }
 
   void _openSurahDetail(Surah surah) {
@@ -52,6 +73,18 @@ class _QuranScreenState extends ConsumerState<QuranScreen> {
   @override
   Widget build(BuildContext context) {
     final quranState = ref.watch(quranProvider);
+    // Listen inside build to comply with Riverpod: auto-scroll when playing verse changes
+    ref.listen<QuranState>(quranProvider, (previous, next) {
+      if (previous == null) return;
+      final prevIndex = previous.currentVerseIndex;
+      final nextIndex = next.currentVerseIndex;
+      if (nextIndex != prevIndex && next.isPlaying) {
+        // schedule microtask to ensure widget contexts are available
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollToVerse(nextIndex);
+        });
+      }
+    });
     final allSurahs = quranState.surahList.isEmpty
         ? dummySurahs
         : quranState.surahList;
@@ -74,6 +107,7 @@ class _QuranScreenState extends ConsumerState<QuranScreen> {
 
           Expanded(
             child: SingleChildScrollView(
+              controller: _scrollController,
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: InfoCard(
@@ -239,6 +273,17 @@ class _QuranScreenState extends ConsumerState<QuranScreen> {
                       color: Color(0xFF666666),
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  // Arabic name
+                  Text(
+                    surah.nameArabic,
+                    style: GoogleFonts.notoNaskhArabic(
+                      fontSize: 18,
+                      color: const Color(0xFF4a7c59),
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ],
               ),
             ),
@@ -403,13 +448,27 @@ class _QuranScreenState extends ConsumerState<QuranScreen> {
   }
 
   Widget _buildVerseItem(Verse verse) {
+    final quranState = ref.watch(quranProvider);
+    final int verseIndex = verse.inSurah - 1;
+    final bool isCurrentVerse = quranState.currentVerseIndex == verseIndex;
+    final bool isPlaying = quranState.isPlaying && isCurrentVerse;
+
+    // ensure key exists for this verse so we can scroll to it
+    _verseKeys.putIfAbsent(verseIndex, () => GlobalKey());
+
     return Container(
+      key: _verseKeys[verseIndex],
       margin: const EdgeInsets.only(bottom: 25),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: const Color(0xFFf8fdf8),
+        color: isCurrentVerse
+            ? const Color(0xFFE8F6EA)
+            : const Color(0xFFf8fdf8),
         borderRadius: BorderRadius.circular(8),
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 1)],
+        border: isCurrentVerse
+            ? Border.all(color: kPrimaryColor.withOpacity(0.2))
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -457,14 +516,24 @@ class _QuranScreenState extends ConsumerState<QuranScreen> {
           Align(
             alignment: Alignment.centerRight,
             child: IconButton(
-              icon: const Icon(
-                Icons.play_circle_fill,
+              icon: Icon(
+                isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
                 color: kPrimaryColor,
                 size: 36,
               ),
               onPressed: () {
-                // Play per ayat via provider (verse.inSurah is 1-based)
-                ref.read(quranProvider.notifier).playVerse(verse.inSurah - 1);
+                // If this is the currently selected verse
+                if (isCurrentVerse) {
+                  // If currently playing -> pause, otherwise resume/play
+                  if (quranState.isPlaying) {
+                    ref.read(quranProvider.notifier).togglePlayPause();
+                  } else {
+                    ref.read(quranProvider.notifier).playVerse(verseIndex);
+                  }
+                } else {
+                  // Play this specific verse (verse.inSurah is 1-based)
+                  ref.read(quranProvider.notifier).playVerse(verseIndex);
+                }
               },
             ),
           ),

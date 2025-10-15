@@ -40,9 +40,10 @@ class QuranState {
   }) {
     return QuranState(
       surahList: surahList ?? this.surahList,
-      selectedSurah: selectedSurah,
+      // preserve selectedSurah and error unless explicitly provided
+      selectedSurah: selectedSurah ?? this.selectedSurah,
       isLoading: isLoading ?? this.isLoading,
-      error: error,
+      error: error ?? this.error,
       audioPlayer: audioPlayer,
       isPlaying: isPlaying ?? this.isPlaying,
       currentVerseIndex: currentVerseIndex ?? this.currentVerseIndex,
@@ -55,6 +56,7 @@ class QuranNotifier extends StateNotifier<QuranState> {
   final QuranApiService _service;
   StreamSubscription<PlayerState>? _playerStateSub;
   bool _isHandlingCompletion = false;
+  bool _isAutoAdvancing = false;
 
   QuranNotifier(this._service) : super(QuranState(audioPlayer: AudioPlayer()));
 
@@ -86,12 +88,29 @@ class QuranNotifier extends StateNotifier<QuranState> {
     _playerStateSub?.cancel();
     _playerStateSub = state.audioPlayer.playerStateStream.listen((playerState) {
       final processingState = playerState.processingState;
+      final playing = playerState.playing;
+
+      // If processing completed and we're not already handling it, start auto-advance.
       if (processingState == ProcessingState.completed &&
           !_isHandlingCompletion) {
         _isHandlingCompletion = true;
-        _handleCompletion().then((_) {
-          _isHandlingCompletion = false;
+        _isAutoAdvancing = true;
+        // Add small delay to prevent rapid state changes, then handle completion.
+        Future.delayed(const Duration(milliseconds: 100), () {
+          _handleCompletion().then((_) {
+            _isHandlingCompletion = false;
+            _isAutoAdvancing = false;
+          });
         });
+        // Skip updating isPlaying here to avoid UI flicker (we keep showing pause until next verse starts)
+        return;
+      }
+
+      // If we're auto-advancing, ignore transient playerState.playing=false updates to avoid flicker.
+      if (!_isAutoAdvancing) {
+        if (playing != state.isPlaying) {
+          state = state.copyWith(isPlaying: playing);
+        }
       }
     });
   }
@@ -119,10 +138,14 @@ class QuranNotifier extends StateNotifier<QuranState> {
 
     try {
       await state.audioPlayer.setUrl(url);
+      state = state.copyWith(currentVerseIndex: verseIndex);
       await state.audioPlayer.play();
-      state = state.copyWith(isPlaying: true, currentVerseIndex: verseIndex);
+      state = state.copyWith(isPlaying: true);
     } catch (e) {
-      // handle error
+      // handle error - try next verse
+      if (verseIndex < state.selectedSurah!.versesList.length - 1) {
+        await playVerse(verseIndex + 1);
+      }
     }
   }
 
@@ -147,23 +170,36 @@ class QuranNotifier extends StateNotifier<QuranState> {
     );
 
     try {
+      // Update current index first so UI knows which verse we're switching to
+      state = state.copyWith(currentVerseIndex: index);
       await state.audioPlayer.setUrl(audioUrl);
-      state = state.copyWith(isPlaying: true, currentVerseIndex: index);
       await state.audioPlayer.play();
+      // Mark as playing only after play() starts to avoid transient UI changes
+      state = state.copyWith(isPlaying: true);
     } catch (e) {
-      // Error loading audio, skip to next verse
-      _playNextVerse(index + 1);
+      // Error loading audio, skip to next verse after a delay
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (index < state.selectedSurah!.versesList.length - 1) {
+        _playNextVerse(index + 1);
+      }
     }
   }
 
   Future<void> _handleCompletion() async {
     if (state.selectedSurah == null) return;
-    if (state.currentVerseIndex < state.selectedSurah!.versesList.length - 1) {
-      await _playNextVerse(state.currentVerseIndex + 1);
+    final nextIndex = state.currentVerseIndex + 1;
+    if (nextIndex < state.selectedSurah!.versesList.length) {
+      // Auto-advance: directly start next verse without setting isPlaying=false or stopping.
+      // Small delay to allow player to settle, then play next verse. We keep isPlaying true
+      // so UI stays showing pause until the next verse starts.
+      await Future.delayed(const Duration(milliseconds: 150));
+      await _playNextVerse(nextIndex);
     } else {
-      state.audioPlayer.stop();
-      state = state.copyWith(isPlaying: false, currentVerseIndex: 0);
+      // Last verse: stop playback and mark not playing
+      await state.audioPlayer.stop();
+      state = state.copyWith(isPlaying: false);
     }
+    // If it's the last verse, just stop (no auto-play to next surah)
   }
 
   void togglePlayPause() {
@@ -177,7 +213,9 @@ class QuranNotifier extends StateNotifier<QuranState> {
     // If not currently playing, try to resume if an item is loaded and not finished
     final duration = state.audioPlayer.duration;
     final position = state.audioPlayer.position;
-    if (duration != null && position < duration) {
+    if (duration != null &&
+        position < duration &&
+        position.inMilliseconds > 0) {
       state.audioPlayer.play();
       state = state.copyWith(isPlaying: true);
       return;
@@ -232,8 +270,8 @@ class QuranNotifier extends StateNotifier<QuranState> {
   Map<String, String> availableQori() {
     return {
       'alafasy': 'Mishary Rashid Alafasy',
-      'basit': 'Abdul Basit',
-      'husary': 'Muhammad Siddiq Al-Minshawi',
+      // 'basit': 'Abdul Basit',
+      // 'husary': 'Muhammad Siddiq Al-Minshawi',
     };
   }
 }
